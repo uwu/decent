@@ -101,8 +101,12 @@ module Decent
     end
   end
 
-  def effect(&watcher)
-    Effect.new &watcher
+  def effect(dependencies = nil, &watcher)
+    return Effect.new(&watcher) if dependencies.nil?
+
+    dependencies.each do |dependency|
+      dependency.add_observer Watcher.new(&watcher)
+    end
   end
 
   def derived(&watcher)

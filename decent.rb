@@ -42,8 +42,10 @@ module Decent
       node
     end
 
+    # this entire thing is currently fucked because we do not unsubscribe from the children's effects
+    # theoretically speaking the solution to this problem is to push every subscription to the current node's subscriptions list
+    # then upon rerendering we just traverse the tree and unsubscribe
     def show(args, &children)
-      # ruby does not like argument names being keywords, so we do this hack to make it work
       cond = args[:if]
 
       # this has cond: as a property to trigger a rerender when the value changes
@@ -51,10 +53,7 @@ module Decent
 
       should_show = false
 
-      # this is actually currently broken because we don't
-      # have dependency arrays, so we subscribe to children's effects and everything gets fucked
-      # todo: add dependency arrays to `effect`
-      effect do
+      effect [cond] do
         if should_show != cond.value
           should_show = cond.value
 
@@ -116,7 +115,8 @@ module Decent
         # todo: nothing here actually resets the bounds when we leave the component. not good.
         case node[:type]
         when "text"
-          @renderer.draw properties[:content], @bounds[0][0], @bounds[0][1]
+          # text wrapping stuff :)
+          @renderer.draw properties[:content].chars.each_slice(@bounds[1][0]).map(&:join).join("\n"), @bounds[0][0], @bounds[0][1]
 
           # todo: remove this shit later, layouting should be handled by stacks and flows, not by the components themselves
           # also, the .length + 1 shit is just to add a space, not *really* necessary

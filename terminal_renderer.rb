@@ -34,10 +34,6 @@ module Decent
           @buffer[iy + y][ix + x] = c
         end
       end
-
-      # TODO: right padding can be done in this loop probably
-
-      #@buffer += text.split("\n").map.with_index {|line, index| "\033[#{y + index + 1 };#{x + 1}H#{line}" }.join
     end
 
     def render
