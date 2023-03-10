@@ -139,6 +139,8 @@ module Decent
           @bounds[1][1] -= 2
         end
       end
+
+      @renderer.render
     end
 
     def run
