@@ -5,7 +5,17 @@ app = Decent::App.new do
 
   box do
     box do
-      text derived { "Count is: #{count.value}! Also, decent is fucking sweet. Look at these sick-ass boxes."}
+      box do
+        box do
+          box do
+            box do
+              box do
+                text derived { "Count is: #{count.value}! Also, decent is fucking sweet. Look at these sick-ass boxes."}
+              end
+            end
+          end
+        end
+      end
     end
   end
 

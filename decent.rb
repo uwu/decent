@@ -1,7 +1,5 @@
 require "./reactivity.rb"
 require "./terminal_renderer.rb"
-require "observer"
-require "io/console"
 
 module Decent
   class App
@@ -102,7 +100,7 @@ module Decent
     def render
       @renderer.clear
       # these go in the order of starting coordinates (x, y), then the max amount rows and cols
-      @bounds = [[1, 0], @renderer.size]
+      @bounds = [[0, 0], @renderer.size]
 
       stack = [@tree]
 

@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+require "io/console"
 
 module Decent
   class TerminalRenderer
@@ -23,9 +24,7 @@ module Decent
       # this is likely bugged with the newline fixes i've just done below. oh well, more work for kasi!
       @furthest = padding > @furthest ? padding : @furthest
 
-      text.split("\n").each_with_index do |line, index|
-        @stdout.print("\033[#{y + index + 1 };#{x}H#{line}")
-      end
+      @stdout.print text.split("\n").map.with_index {|line, index| "\033[#{y + index + 1 };#{x + 1}H#{line}" }.join
     end
 
     def size
@@ -34,12 +33,8 @@ module Decent
     end
 
     def clear
-      # print "\033[0;0H#{" " * @furthest}"
-      # @furthest = 0
-
-      # todo: switch this out for the @furthest implementation. or something cooler. knowing UWUNET this will be
-      # swapped out for something much more sane. i am not sane.
-      @stdout.print "\033[2J"
+      # todo: make this not suck
+      @stdout.print "\033[0;0H" + (" " * size.reduce(:*))
     end
   end
 end

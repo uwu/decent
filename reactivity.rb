@@ -1,10 +1,25 @@
 # frozen_string_literal: true
-require "observer"
 require "set"
 
-# todo: MOVE AWAY FROM OBSERVABLES! currently decent only works in truffle due to a (much better) differing implementation of Ruby observables
-
 module Decent
+  # todo: make this observable implementation less mediocre
+  module Observable
+    def add_observer(observer)
+      @observers ||= []
+      @observers << observer
+    end
+
+    def delete_observer(observer)
+      @observers&.delete(observer)
+    end
+
+    def notify_observers(*args)
+      @observers&.each do |observer|
+        observer.update(*args)
+      end
+    end
+  end
+
   class Watcher
     def initialize(&effect)
       @effect = effect
@@ -19,7 +34,6 @@ module Decent
     include Observable
 
     def trigger(visited)
-      changed
       notify_observers(visited)
     end
   end
@@ -47,7 +61,6 @@ module Decent
 
       old_value = @value
       @value = new_value
-      changed
       notify_observers(new_value, old_value)
     end
   end
