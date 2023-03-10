@@ -53,6 +53,9 @@ module Decent
 
       should_show = false
 
+      # this is actually currently broken because we don't
+      # have dependency arrays, so we subscribe to children's effects and everything gets fucked
+      # todo: add dependency arrays to `effect`
       effect do
         if should_show != cond.value
           should_show = cond.value
