@@ -1,22 +1,25 @@
 require "./decent.rb"
 
 app = Decent::App.new do
-  h = ref 3
+  w = ref 10
 
   box do
-    box height: h do
-      text derived { "Hello world!" * h.value }
+    box width: w do
+      box do
+        text derived { "Hi!" * w.value }
+      end
     end
   end
 
   Thread.new do
     loop do
-      if h.value > 30
-        h.value = 3
+      if w.value > 30
+        w.value = 10
       else
-        h.value += 1
+        w.value += 1
       end
     end
+    sleep 1
   end
 end
 

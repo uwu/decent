@@ -135,8 +135,8 @@ module Decent
 
           @bounds[0][0] += 1
           @bounds[0][1] += 1
-          @bounds[1][0] -= 2
-          @bounds[1][1] -= 2
+          @bounds[1][0] = width - 2
+          @bounds[1][1] = height - 2
         end
       end
 
