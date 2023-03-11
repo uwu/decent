@@ -1,25 +1,28 @@
 require "./decent.rb"
 
 app = Decent::App.new do
-  w = ref 10
+  count = ref 10
 
   box do
-    box width: w do
+    box do
       box do
-        text derived { "Hi!" * w.value }
+        box do
+          box do
+            box do
+              box do
+                text derived { count.value.to_s}
+              end
+            end
+          end
+        end
       end
     end
   end
 
   Thread.new do
     loop do
-      if w.value > 30
-        w.value = 10
-      else
-        w.value += 1
-      end
+      count.value += 1
     end
-    sleep 1
   end
 end
 

@@ -16,6 +16,25 @@ module Decent
       instance_eval(&tui)
     end
 
+    def ref(initial)
+      Ref.new initial
+    end
+    
+    def derived(&watcher)
+      sig = ref nil
+  
+      effect do
+        sig.value = watcher.call
+      end
+  
+      sig
+    end
+
+    # todo: add code to bind this to the current node
+    def effect(dependencies = nil, &watcher)
+      return Effect.new(dependencies, &watcher)
+    end
+
     def element(name, properties = {}, &children)
       subscriptions = []
       node = { type: name, properties: properties, children: [], parent: @current_node, subscriptions: subscriptions }
@@ -24,13 +43,12 @@ module Decent
         if prop.is_a?(Ref)
           properties[key] = prop.value
 
-          effect = Watcher.new do |new|
-            properties[key] = new
+          render_effect = effect [prop] do
+            properties[key] = prop.value
             render
           end
 
-          prop.add_observer effect
-          subscriptions << effect
+          subscriptions << render_effect
         end
       end
 

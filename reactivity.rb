@@ -3,7 +3,7 @@ require "set"
 
 module Decent
   # todo: make this observable implementation less mediocre
-  module Observable
+  module Signal
     def add_observer(observer)
       @observers ||= []
       @observers << observer
@@ -13,25 +13,19 @@ module Decent
       @observers&.delete(observer)
     end
 
+    def unsubscribe_all
+      @observers = []
+    end
+
     def notify_observers(*args)
       @observers&.each do |observer|
-        observer.update(*args)
+        observer.call(*args)
       end
     end
   end
 
-  class Watcher
-    def initialize(&effect)
-      @effect = effect
-    end
-
-    def update(*args)
-      @effect.call(*args)
-    end
-  end
-
   class RefVisited
-    include Observable
+    include Signal
 
     def trigger(visited)
       notify_observers(visited)
@@ -45,7 +39,7 @@ module Decent
   end
 
   class Ref
-    include Observable
+    include Signal
 
     def initialize(initial)
       @value = initial
@@ -65,57 +59,55 @@ module Decent
     end
   end
 
-  def ref(initial)
-    Ref.new initial
-  end
 
   class Effect
-    def initialize(&watcher)
-      @watched_refs = Set[]
-      @watcher = watcher
+    def initialize(dependencies = nil, &effect)
+      # todo: maybe at some point add a simple handler when there's only one dependency?
+      # hyper-autistic optimization might be important idk i'm just some retard on the internet
 
-      Decent.visit_watcher.add_observer(self)
-      call_watcher
-    end
+      if dependencies
+        # not worth making a brand new set for no reason if the dependency list isn't going to change, dynamic types go brrr
+        @dependencies = dependencies
+        @fire_effect = effect
 
-    def call_watcher
-      @watched_refs.each do |ref, effect|
-        ref.delete_observer effect
-      end
-
-      @watched_refs = Set[]
-      @watching = true
-      @watcher.call
-      @watching = false
-    end
-
-    def update(watched)
-      if @watching
-        effect = Watcher.new do
-          call_watcher
+        dependencies.each do |dep|
+          dep.add_observer effect
         end
 
-        watched.add_observer effect
-        @watched_refs << [watched, effect]
+        return
+      end
+
+      @dependencies = Set[]
+      @watcher = ->(visited) { @dependencies << visited }
+      @fire_effect = ->(_, _) { fire_effect }
+      @effect = effect
+
+      
+
+      fire_effect
+    end
+
+    def fire_effect
+      @dependencies.each do |dependency|
+        dependency.delete_observer @fire_effect
+      end
+
+      @dependencies = Set[]
+      Decent.visit_watcher.add_observer(@watcher)
+      @effect.call
+      Decent.visit_watcher.delete_observer(@watcher)
+
+      @dependencies.each do |dependency|
+        dependency.add_observer @fire_effect
       end
     end
-  end
 
-  def effect(dependencies = nil, &watcher)
-    return Effect.new(&watcher) if dependencies.nil?
+    def unsubscribe_all
+      @dependencies.each do |dependency|
+        dependency.delete_observer @fire_effect
+      end
 
-    dependencies.each do |dependency|
-      dependency.add_observer Watcher.new(&watcher)
+      @dependencies = Set[]
     end
-  end
-
-  def derived(&watcher)
-    sig = ref nil
-
-    effect do
-      sig.value = watcher.call
-    end
-
-    sig
   end
 end
