@@ -1,29 +1,45 @@
-require "./decent.rb"
+require_relative "decent_tui"
 
-app = Decent::App.new do
-  count = ref 10
+Decent.tui do
+  count = state 0.1
 
-  box do
-    box do
-      box do
-        box do
-          box do
-            box do
-              box do
-                text derived { count.value.to_s}
-              end
-            end
-          end
-        end
+  box {
+    box {
+      box {
+        stack {
+          flow {
+            box(width: count) {}
+            box {}
+          }
+          flow {
+            box(height:count) {}
+
+            box {}
+          }
+        }
+      }
+      box {
+        label derived { "Woah! It's currently at: #{count.value.to_s}" }
+      }
+    }
+  }
+
+
+  Thread.new do
+    flip = true
+
+    loop do
+      if flip
+        count.value += 0.1
+      else
+        count.value -= 0.1
+      end
+
+      if count.value >= 2.0
+        flip = false
+      elsif count.value <= 0.1
+        flip = true
       end
     end
   end
-
-  Thread.new do
-    loop do
-      count.value += 1
-    end
-  end
 end
-
-app.run
