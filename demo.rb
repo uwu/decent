@@ -1,15 +1,7 @@
 require_relative "decent_tui"
 
 Decent.tui do
-  whatever = state "whatever"
+  #whatever = state "whatever"
 
-  box { # THIS
-    box { # THIS
-      box {}
-      box { # THIS
-        label whatever # THIS
-      }
-      box {}
-    }
-  }
+  box {}
 end
