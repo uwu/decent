@@ -1,0 +1,32 @@
+GEM
+  remote: https://rubygems.org/
+  specs:
+    async (1.32.1)
+      console (~> 1.10)
+      nio4r (~> 2.3)
+      timers (~> 4.1)
+    async-io (1.42.0)
+      async
+    console (1.23.6)
+      fiber-annotation
+      fiber-local
+      json
+    fiber-annotation (0.2.0)
+    fiber-local (1.0.0)
+    json (2.7.1)
+    memory_profiler (1.0.1)
+    nio4r (2.7.1)
+    timers (4.3.5)
+
+PLATFORMS
+  arm64-darwin-22
+  x64-mingw-ucrt
+  x86_64-linux
+
+DEPENDENCIES
+  async (~> 1.32.1)
+  async-io
+  memory_profiler
+
+BUNDLED WITH
+   2.4.10
