@@ -20,16 +20,16 @@ module Decent
     # parse a multiline string into a stringbuf
     # note: assumes there are no double-wide characters. these will not be correctly handled.
     # however, it DOES correctly handle graphemes.
-    def parse(str)
+    def self.parse(str)
       split = str.split "\n"
-      width = split.max { |a, b| a.each_grapheme_cluster.size <=> b.each_grapheme_cluster.size }
-
+      width = split.map { |s| s.each_grapheme_cluster.size }.max
       dest = StringBuf.new [width, split.length]
       split.each_with_index do |line, y|
         line.each_grapheme_cluster.each_with_index do |grapheme, x|
           dest[[x, y]] = grapheme
         end
       end
+      dest
     end
 
     def __resolve(pos) # [x, y]
@@ -37,7 +37,7 @@ module Decent
         throw Exception.new "Index out of range while indexing Decent::StringBuf"
       end
 
-      pos[0] + (pos[1] * @size[1])
+      pos[0] + (pos[1] * @size[0])
     end
 
     def [](pos)
@@ -86,6 +86,24 @@ module Decent
       new
     end
 
+    def clear!(start = [0, 0], size = @size)
+      xs = start[0]
+      ys = start[1]
+      size[1].times do |y|
+        size[0].times do |x|
+          @charbuf[__resolve [xs + x, ys + y]] = 32
+          @stylemap_fgcol[__resolve [xs + x, ys + y]] = 39
+          @stylemap_bgcol[__resolve [xs + x, ys + y]] = 49
+          @stylemap_sgr[__resolve [xs + x, ys + y]] = []
+        end
+      end
+      # new = StringBuf.new @size
+      # @charbuf = new.charbuf
+      # @stylemap_fgcol = new.stylemap_fgcol
+      # @stylemap_bgcol = new.stylemap_bgcol
+      # @stylemap_sgr = new.stylemap_sgr
+    end
+
     def resize!(new_size)
       # let the GC collect the old arrays and the new class WHEEEE
       new = resize new_size
@@ -101,11 +119,11 @@ module Decent
         clip = str.size
       else
         # make clip the min of the allowable space and the size of the string we're templating
-        clip = [min(clip[0], str.size[0] - pos[0]), min(clip[1], str.size[1] - pos[1])]
+        clip = [[clip[0], str.size[0]].min, [clip[1], str.size[1]].min]
       end
 
       # ensure we don't overdraw
-      clip = [min(clip[0], @size[0]), min(clip[1], @size[1])]
+      clip = [[clip[0], @size[0]].min, [clip[1], @size[1]].min]
 
       clip[1].times do |y|
         clip[0].times do |x|
@@ -133,6 +151,14 @@ module Decent
 
     attr_accessor :pos, :clip
 
+    def width
+      @str.size[0]
+    end
+
+    def height
+      @str.size[1]
+    end
+
     def __offset(pos)
       [pos[0] + @pos[0], pos[1] + @pos[1]]
     end
@@ -145,6 +171,10 @@ module Decent
       @str[__offset pos] = val
     end
 
+    def clear!
+      @str.clear! __offset(pos), @clip
+    end
+
     def template(str, pos)
       @str.template str, __offset(pos), @clip
     end
@@ -152,7 +182,7 @@ module Decent
     def sub_templater(pos, clip)
       oset_clip = __offset clip
       # bounds check
-      oset_clip = [min(oset_clip[0], @str.size[0]), min(oset_clip[1], @str.size[1])]
+      oset_clip = [[oset_clip[0], @str.size[0]].min, [oset_clip[1], @str.size[1]].min]
 
       StringTemplater.new @str, __offset(pos), oset_clip
     end
@@ -273,16 +303,15 @@ module Decent
     def render_children
       return if children.length == 0
 
-      if is_stack?
-        used_space = 0
-        children.each do |c|
-          oset = is_stack? ? [0, used_space] : [used_space, 0]
+      used_space = 0
+      children.each do |c|
+        oset = is_stack? ? [0, used_space] : [used_space, 0]
 
-          c.templater = @templater.sub_templater oset, c.calculated_size
-          c.render
+        c.templater.clear! unless c.templater.nil?
+        c.templater = @templater.sub_templater oset, c.calculated_size
+        c.render
 
-          used_space += c.calculated_size[is_stack? ? 1 : 0]
-        end
+        used_space += c.calculated_size[is_stack? ? 1 : 0]
       end
     end
 
@@ -333,7 +362,6 @@ module Decent
   class BoxNode < TerminalNode
     def render
       return unless @dirty
-      puts "hi"
 
       # Width
       @constraints.width = @calculated_size[0] - 2
@@ -363,7 +391,7 @@ module Decent
       # lmao
       old_templater = @templater
 
-      @templater = @templater.sub_templater [1, 1], [@templater.buf.size[0] - 2, @templater.buf.size[1] - 2]
+      @templater = @templater.sub_templater [1, 1], [@templater.width - 2, @templater.height - 2]
       render_children
 
       @templater = old_templater
@@ -502,8 +530,6 @@ module Decent
       begin
         root.draw
 
-        return
-
         # We can remove this after TruffleRuby gets support for Fiber schedulers.
         # This is why I wanted 0 deps. Sigh :(
         readable_stdin = Async::IO::Stream.new(
@@ -554,8 +580,8 @@ module Decent
     end
 
     def setup
-      #@stdout.print "\033[?1049h" # Save screen
-      #@stdout.print "\033[2J" # Clear screen
+      @stdout.print "\033[?1049h" # Save screen
+      @stdout.print "\033[2J" # Clear screen
       @stdout.print "\033[?25l" # Disable cursor
 
       @stdin.echo = false
@@ -566,9 +592,9 @@ module Decent
     def cleanup
       @stdin.echo = true
 
-      #@stdout.print "\033[2J" # Clear screen
-      #@stdout.print "\033[?25h" # Re-enable cursor
-      #@stdout.print "\033[?1049l" # Restore screen
+      @stdout.print "\033[2J" # Clear screen
+      @stdout.print "\033[?25h" # Re-enable cursor
+      @stdout.print "\033[?1049l" # Restore screen
     end
 
     # Draw takes starting coordinates and draws text to the current screen buffer.
@@ -591,7 +617,7 @@ module Decent
 
     # Render takes the current screen buffer and renders it to the terminal.
     def render
-      puts @buffer.charbuf
+      # puts @buffer.charbuf
 
       # despite ruby being ruby, its probably faster to build this in memory anyway
       render_buffer = "\033[0;0f\033[39;49m"
@@ -623,17 +649,13 @@ module Decent
 
           render_buffer += @buffer[[x, y]]
         end
-        render_buffer += "\n"
       end
 
       @stdout.print render_buffer
-      #clear
     end
 
-    # Gets the terminal size, index 0 is rows, index 1 is columns.
     def size
-      #@stdout.winsize
-      [15, 15]
+      @stdout.winsize # [rows, columns]
     end
 
     def root_templater
