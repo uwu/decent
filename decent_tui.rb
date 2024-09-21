@@ -113,20 +113,20 @@ module Decent
       @stylemap_sgr = new.stylemap_sgr
     end
 
-    def template(str, pos, clip = nil)
-      if clip == nil
+    def template(str, pos, clip_sz = nil)
+      if clip_sz == nil
         # no max size given, just use the string size
-        clip = str.size
+        clip_sz = str.size
       else
         # make clip the min of the allowable space and the size of the string we're templating
-        clip = [[clip[0], str.size[0]].min, [clip[1], str.size[1]].min]
+        clip_sz = [[clip_sz[0], str.size[0]].min, [clip_sz[1], str.size[1]].min]
       end
 
       # ensure we don't overdraw
-      clip = [[clip[0], @size[0]].min, [clip[1], @size[1]].min]
+      clip_sz = [[clip_sz[0], @size[0]].min, [clip_sz[1], @size[1]].min]
 
-      clip[1].times do |y|
-        clip[0].times do |x|
+      clip_sz[1].times do |y|
+        clip_sz[0].times do |x|
           ox = x + pos[0]
           oy = y + pos[1]
           srcidx = str.__resolve [x, y]
@@ -146,11 +146,10 @@ module Decent
     def initialize(str, pos, size)
       @str = str
       @pos = pos
-      # clip is the size of the area, not the bottom right corner
-      @clip = size
+      @size = size
     end
 
-    attr_accessor :pos, :clip
+    attr_accessor :pos, :size
 
     def width
       @str.size[0]
@@ -173,19 +172,19 @@ module Decent
     end
 
     def clear!
-      @str.clear! __offset(pos), @clip
+      @str.clear! __offset(pos), @size
     end
 
     def template(str, pos)
-      @str.template str, __offset(pos), @clip
+      @str.template str, __offset(pos), @size
     end
 
-    def sub_templater(pos, clip)
-      oset_clip = __offset clip
+    def sub_templater(pos, size)
+      oset_size = __offset size
       # bounds check
-      oset_clip = [[oset_clip[0] - pos[0], @str.size[0]].min, [oset_clip[1] - pos[1], @str.size[1]].min]
+      oset_size = [[oset_size[0] - pos[0], @str.size[0] - pos[0]].min, [oset_size[1] - pos[1], @str.size[1] - pos[1]].min]
 
-      StringTemplater.new @str, __offset(pos), oset_clip
+      StringTemplater.new @str, __offset(pos), oset_size
     end
   end
 
