@@ -1,3 +1,5 @@
+#require "debug/open"
+
 require_relative "decent_tui"
 
 Decent.tui do

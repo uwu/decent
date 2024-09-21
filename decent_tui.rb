@@ -146,6 +146,7 @@ module Decent
     def initialize(str, pos, size)
       @str = str
       @pos = pos
+      # clip is the size of the area, not the bottom right corner
       @clip = size
     end
 
@@ -182,7 +183,7 @@ module Decent
     def sub_templater(pos, clip)
       oset_clip = __offset clip
       # bounds check
-      oset_clip = [[oset_clip[0], @str.size[0]].min, [oset_clip[1], @str.size[1]].min]
+      oset_clip = [[oset_clip[0] - pos[0], @str.size[0]].min, [oset_clip[1] - pos[1], @str.size[1]].min]
 
       StringTemplater.new @str, __offset(pos), oset_clip
     end
