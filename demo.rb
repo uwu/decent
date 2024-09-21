@@ -10,8 +10,15 @@ Decent.tui do
     label derived { count.value.to_s }
   }
 
-  box {
-    label "layouting hehe"
+  box(width: 5) {
+    label "abc"
+  }
+
+  stack {
+    box(height: w) {
+      label "layouting hehe"
+    }
+    box {}
   }
 
   dw = 0.5
@@ -27,6 +34,15 @@ Decent.tui do
   end
 
   Thread.new do
+    loop do
+      count.value -= 1
+      w.value += dw
 
+      if w.value > 2
+        dw = -0.1
+      elsif w.value < 0.5
+        dw = 0.1
+      end
+    end
   end
 end

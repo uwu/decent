@@ -200,9 +200,8 @@ module Decent
     end
 
     def render
-      return unless dirty
-
-      @dirty = false
+      #return unless dirty
+      #@dirty = false
 
       layout_children
       #@cache =
@@ -329,9 +328,9 @@ module Decent
 
     def templater=(tmpl)
       # clear up old one to handle resizes
-      if @dirty && @templater != nil
-        @templater.clear!
-      end
+      #if @dirty && @templater != nil
+      #  @templater.clear!
+      #end
       @templater = tmpl
     end
 
@@ -369,8 +368,8 @@ module Decent
 
   class BoxNode < TerminalNode
     def render
-      return unless @dirty
-      @dirty = false
+      #return unless @dirty
+      #@dirty = false
 
       # Width
       @constraints.width = @calculated_size[0] - 2
@@ -397,7 +396,6 @@ module Decent
         @templater[[wmax, i + 1]] = "│"
       end
 
-      # lmao
       old_templater = @templater
 
       @templater = @templater.sub_templater [1, 1], [@templater.width - 2, @templater.height - 2]
@@ -660,6 +658,7 @@ module Decent
       end
 
       @stdout.print render_buffer
+      @buffer.clear!
     end
 
     def size
