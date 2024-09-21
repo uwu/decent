@@ -91,10 +91,11 @@ module Decent
       ys = start[1]
       size[1].times do |y|
         size[0].times do |x|
-          @charbuf[__resolve [xs + x, ys + y]] = 32
-          @stylemap_fgcol[__resolve [xs + x, ys + y]] = 39
-          @stylemap_bgcol[__resolve [xs + x, ys + y]] = 49
-          @stylemap_sgr[__resolve [xs + x, ys + y]] = []
+          idx = __resolve [xs + x, ys + y]
+          @charbuf[idx] = 32
+          @stylemap_fgcol[idx] = 39
+          @stylemap_bgcol[idx] = 49
+          @stylemap_sgr[idx] = []
         end
       end
       # new = StringBuf.new @size
@@ -172,7 +173,7 @@ module Decent
     end
 
     def clear!
-      @str.clear! __offset(pos), @size
+      @str.clear! @pos, @size
     end
 
     def template(str, pos)
@@ -180,11 +181,10 @@ module Decent
     end
 
     def sub_templater(pos, size)
-      oset_size = __offset size
       # bounds check
-      oset_size = [[oset_size[0] - pos[0], @str.size[0] - pos[0]].min, [oset_size[1] - pos[1], @str.size[1] - pos[1]].min]
+      size = [[size[0], @size[0] - pos[0]].min, [size[1], @size[1] - pos[1]].min]
 
-      StringTemplater.new @str, __offset(pos), oset_size
+      StringTemplater.new @str, __offset(pos), size
     end
   end
 
@@ -307,12 +307,12 @@ module Decent
       children.each do |c|
         oset = is_stack? ? [0, used_space] : [used_space, 0]
 
-        c.templater.clear! unless c.templater.nil?
-        c.templater = @templater.sub_templater oset, c.calculated_size
-        c.render
+        c.templater = @templater.sub_templater(oset, c.calculated_size)
 
         used_space += c.calculated_size[is_stack? ? 1 : 0]
       end
+
+      children.each(&:render)
     end
 
     def update
@@ -327,7 +327,15 @@ module Decent
       node.dirty = true
     end
 
-    attr_accessor :calculated_size, :dirty, :constraints, :templater
+    def templater=(tmpl)
+      # clear up old one to handle resizes
+      if @dirty && @templater != nil
+        @templater.clear!
+      end
+      @templater = tmpl
+    end
+
+    attr_accessor :calculated_size, :dirty, :constraints
   end
 
   class TerminalRoot < TerminalNode
@@ -362,6 +370,7 @@ module Decent
   class BoxNode < TerminalNode
     def render
       return unless @dirty
+      @dirty = false
 
       # Width
       @constraints.width = @calculated_size[0] - 2
@@ -396,7 +405,6 @@ module Decent
 
       @templater = old_templater
 
-      @dirty = false
       #@cache = box
     end
   end
