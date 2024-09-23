@@ -26,14 +26,14 @@ module Decent
       dest = StringBuf.new [width, split.length]
       split.each_with_index do |line, y|
         line.each_grapheme_cluster.each_with_index do |grapheme, x|
-          dest[[x, y]] = grapheme
+          dest[x, y] = grapheme
         end
       end
       dest
     end
 
     # this was supposed to be private
-    def resolve((x, y)) # [x, y]
+    def resolve(x, y) # [x, y]
       if x >= size[0] || y >= size[1]
         throw Exception.new "Index out of range while indexing Decent::StringBuf"
       end
@@ -41,8 +41,8 @@ module Decent
       x + (y * @size[0])
     end
 
-    def [](pos)
-      c = @char_buf[resolve pos]
+    def [](x, y)
+      c = @char_buf[resolve(x, y)]
       if c.is_a? Integer
         return c.chr Encoding::UTF_8
       end
@@ -50,35 +50,35 @@ module Decent
       c.map { |chr| chr.chr Encoding::UTF_8  }.join
     end
 
-    def []=(pos, val)
+    def []=(x, y, val)
       # assume that if the string has multiple characters, we should treat it as a grapheme cluster
       if val.length == 0
-        @char_buf[resolve pos] = []
+        @char_buf[resolve(x, y)] = []
       elsif val.length == 1
-        @char_buf[resolve pos] = val.ord
+        @char_buf[resolve(x, y)] = val.ord
       else
-        @char_buf[resolve pos] = val.codepoints
+        @char_buf[resolve(x, y)] = val.codepoints
       end
     end
 
-    def get_fg(pos)
-      @stylemap_fgcol[resolve pos]
+    def get_fg(x, y)
+      @stylemap_fgcol[resolve(x, y)]
     end
-    def get_bg(pos)
-      @stylemap_bgcol[resolve pos]
+    def get_bg(x, y)
+      @stylemap_bgcol[resolve(x, y)]
     end
-    def get_sgr(pos)
-      @stylemap_sgr[resolve pos]
+    def get_sgr(x, y)
+      @stylemap_sgr[resolve(x, y)]
     end
 
-    def set_fg(pos, col)
-      @stylemap_fgcol[resolve pos] = col
+    def set_fg(x, y, col)
+      @stylemap_fgcol[resolve(x, y)] = col
     end
-    def set_bg(pos, col)
-      @stylemap_bgcol[resolve pos] = col
+    def set_bg(x, y, col)
+      @stylemap_bgcol[resolve(x, y)] = col
     end
-    def set_sgr(pos, sgr)
-      @stylemap_sgr[resolve pos] = sgr
+    def set_sgr(x, y, sgr)
+      @stylemap_sgr[resolve(x, y)] = sgr
     end
 
     def resize(new_size)
@@ -92,7 +92,7 @@ module Decent
       ys = start[1]
       size[1].times do |y|
         size[0].times do |x|
-          idx = resolve [xs + x, ys + y]
+          idx = resolve(xs + x, ys + y)
           @char_buf[idx] = 32
           @stylemap_fgcol[idx] = 39
           @stylemap_bgcol[idx] = 49
@@ -121,18 +121,24 @@ module Decent
         clip_size = str.size
       else
         # make clip the min of the allowable space and the size of the string we're templating
-        clip_size = [[clip_size[0], str.size[0]].min, [clip_size[1], str.size[1]].min]
+        clip_size = [
+          [clip_size[0], str.size[0]].min,
+          [clip_size[1], str.size[1]].min
+        ]
       end
 
       # ensure we don't overdraw
-      clip_size = [[clip_size[0], @size[0]].min, [clip_size[1], @size[1]].min]
+      clip_size = [
+        [clip_size[0], @size[0]].min,
+        [clip_size[1], @size[1]].min
+      ]
 
       clip_size[1].times do |y|
         clip_size[0].times do |x|
           ox = x + pos[0]
           oy = y + pos[1]
-          source_index = str.resolve [x, y]
-          dest_index = resolve [ox, oy]
+          source_index = str.resolve(x, y)
+          dest_index = resolve(ox, oy)
 
           @char_buf[dest_index] = str.char_buf[source_index]
           @stylemap_fgcol[dest_index] = str.stylemap_fgcol[source_index]
@@ -161,16 +167,19 @@ module Decent
       @str.size[1]
     end
 
-    def offset(pos)
-      [pos[0] + @pos[0], pos[1] + @pos[1]]
+    def offset(x, y)
+      [
+        x + @pos[0],
+        y + @pos[1]
+      ]
     end
 
-    def [](pos)
-      @str[offset pos]
+    def [](x, y)
+      @str[*offset(x, y)]
     end
 
-    def []=(pos, val)
-      @str[offset pos] = val
+    def []=(x, y, val)
+      @str[*offset(x, y)] = val
     end
 
     def clear!
@@ -178,17 +187,17 @@ module Decent
     end
 
     def template(str, pos)
-      @str.template str, offset(pos), @size
+      @str.template str, offset(*pos), @size
     end
 
-    def sub_templater(pos, size)
+    def sub_templater((x, y), (width, height))
       # bounds check
       size = [
-        [size[0], @size[0] - pos[0]].min,
-        [size[1], @size[1] - pos[1]].min
+        [width, @size[0] - x].min,
+        [height, @size[1] - y].min
       ]
 
-      StringTemplater.new @str, offset(pos), size
+      StringTemplater.new @str, offset(x, y), size
     end
   end
 
@@ -377,18 +386,19 @@ module Decent
       right = @calculated_size[0] - 1
       bottom = @calculated_size[1] - 1
 
-      @templater[[0, 0]] = "┌"
-      @templater[[right, 0]] = "┐"
-      @templater[[0, bottom]] = "└"
-      @templater[[right, bottom]] = "┘"
+      @templater[0, 0] = "┌"
+      @templater[right, 0] = "┐"
+      @templater[0, bottom] = "└"
+      @templater[right, bottom] = "┘"
 
       (@calculated_size[0] - 2).times do |i|
-        @templater[[i + 1, 0]] = "─"
-        @templater[[i + 1, bottom]] = "─"
+        @templater[i + 1, 0] = "─"
+        @templater[i + 1, bottom] = "─"
       end
+
       (@calculated_size[1] - 2).times do |i|
-        @templater[[0, i + 1]] = "│"
-        @templater[[right, i + 1]] = "│"
+        @templater[0, i + 1] = "│"
+        @templater[right, i + 1] = "│"
       end
 
       render_children @templater.sub_templater [1, 1], [@templater.width - 2, @templater.height - 2]
@@ -410,7 +420,7 @@ module Decent
   end
 
   class SpacerNode < TerminalNode
-    def render(templater)
+    def render
       return unless @dirty
 
       width = @constraints.width
@@ -418,7 +428,7 @@ module Decent
 
       height.times do |y|
         width.times do |x|
-          templater[[x, y]]
+          @templater[x, y] = " "
         end
       end
 
@@ -621,8 +631,8 @@ module Decent
       prev_bg = 49
       @buffer.size[1].times do |y|
         @buffer.size[0].times do |x|
-          fg = @buffer.get_fg [x, y]
-          bg = @buffer.get_bg [x, y]
+          fg = @buffer.get_fg(x, y)
+          bg = @buffer.get_bg(x, y)
           if fg != prev_fg
             if bg != prev_bg
               render_buffer += "\033[" + fg.to_s + ";" + bg.to_s + "m"
@@ -637,12 +647,12 @@ module Decent
           prev_fg = fg
           prev_bg = bg
 
-          sgr = @buffer.get_sgr [x, y]
+          sgr = @buffer.get_sgr(x, y)
           if sgr.length > 0
             render_buffer += "\033[" + sgr.map { |n| n.to_s }.join(";") + "m"
           end
 
-          render_buffer += @buffer[[x, y]]
+          render_buffer += @buffer[x, y]
         end
       end
 
