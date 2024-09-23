@@ -8,14 +8,14 @@ module Decent
     def initialize(size)
       len = size[0] * size[1]
       @size = size # [w, h]
-      @charbuf = Array.new(len, 32) # space char
+      @char_buf = Array.new(len, 32) # space char
       @stylemap_fgcol = Array.new(len, 39) # default fg col
       @stylemap_bgcol = Array.new(len, 49)
       @stylemap_sgr   = Array.new(len) { Array.new }
     end
 
     # i stg do not edit the arrays returned by these or i will murder you -- sink
-    attr_reader :size, :charbuf, :stylemap_bgcol, :stylemap_fgcol, :stylemap_sgr
+    attr_reader :size, :char_buf, :stylemap_bgcol, :stylemap_fgcol, :stylemap_sgr
 
     # parse a multiline string into a stringbuf
     # note: assumes there are no double-wide characters. these will not be correctly handled.
@@ -32,16 +32,17 @@ module Decent
       dest
     end
 
-    def __resolve(pos) # [x, y]
-      if pos[0] >= size[0] || pos[1] >= size[1]
+    # this was supposed to be private
+    def resolve((x, y)) # [x, y]
+      if x >= size[0] || y >= size[1]
         throw Exception.new "Index out of range while indexing Decent::StringBuf"
       end
 
-      pos[0] + (pos[1] * @size[0])
+      x + (y * @size[0])
     end
 
     def [](pos)
-      c = @charbuf[__resolve pos]
+      c = @char_buf[resolve pos]
       if c.is_a? Integer
         return c.chr Encoding::UTF_8
       end
@@ -52,32 +53,32 @@ module Decent
     def []=(pos, val)
       # assume that if the string has multiple characters, we should treat it as a grapheme cluster
       if val.length == 0
-        @charbuf[__resolve pos] = []
+        @char_buf[resolve pos] = []
       elsif val.length == 1
-        @charbuf[__resolve pos] = val.ord
+        @char_buf[resolve pos] = val.ord
       else
-        @charbuf[__resolve pos] = val.codepoints
+        @char_buf[resolve pos] = val.codepoints
       end
     end
 
     def get_fg(pos)
-      @stylemap_fgcol[__resolve pos]
+      @stylemap_fgcol[resolve pos]
     end
     def get_bg(pos)
-      @stylemap_bgcol[__resolve pos]
+      @stylemap_bgcol[resolve pos]
     end
     def get_sgr(pos)
-      @stylemap_sgr[__resolve pos]
+      @stylemap_sgr[resolve pos]
     end
 
     def set_fg(pos, col)
-      @stylemap_fgcol[__resolve pos] = col
+      @stylemap_fgcol[resolve pos] = col
     end
     def set_bg(pos, col)
-      @stylemap_bgcol[__resolve pos] = col
+      @stylemap_bgcol[resolve pos] = col
     end
     def set_sgr(pos, sgr)
-      @stylemap_sgr[__resolve pos] = sgr
+      @stylemap_sgr[resolve pos] = sgr
     end
 
     def resize(new_size)
@@ -91,8 +92,8 @@ module Decent
       ys = start[1]
       size[1].times do |y|
         size[0].times do |x|
-          idx = __resolve [xs + x, ys + y]
-          @charbuf[idx] = 32
+          idx = resolve [xs + x, ys + y]
+          @char_buf[idx] = 32
           @stylemap_fgcol[idx] = 39
           @stylemap_bgcol[idx] = 49
           @stylemap_sgr[idx] = []
@@ -108,35 +109,35 @@ module Decent
     def resize!(new_size)
       # let the GC collect the old arrays and the new class WHEEEE
       new = resize new_size
-      @charbuf = new.charbuf
+      @char_buf = new.char_buf
       @stylemap_fgcol = new.stylemap_fgcol
       @stylemap_bgcol = new.stylemap_bgcol
       @stylemap_sgr = new.stylemap_sgr
     end
 
-    def template(str, pos, clip_sz = nil)
-      if clip_sz == nil
+    def template(str, pos, clip_size = nil)
+      if clip_size == nil
         # no max size given, just use the string size
-        clip_sz = str.size
+        clip_size = str.size
       else
         # make clip the min of the allowable space and the size of the string we're templating
-        clip_sz = [[clip_sz[0], str.size[0]].min, [clip_sz[1], str.size[1]].min]
+        clip_size = [[clip_size[0], str.size[0]].min, [clip_size[1], str.size[1]].min]
       end
 
       # ensure we don't overdraw
-      clip_sz = [[clip_sz[0], @size[0]].min, [clip_sz[1], @size[1]].min]
+      clip_size = [[clip_size[0], @size[0]].min, [clip_size[1], @size[1]].min]
 
-      clip_sz[1].times do |y|
-        clip_sz[0].times do |x|
+      clip_size[1].times do |y|
+        clip_size[0].times do |x|
           ox = x + pos[0]
           oy = y + pos[1]
-          srcidx = str.__resolve [x, y]
-          dstidx = __resolve [ox, oy]
+          source_index = str.resolve [x, y]
+          dest_index = resolve [ox, oy]
 
-          @charbuf[dstidx] = str.charbuf[srcidx]
-          @stylemap_fgcol[dstidx] = str.stylemap_fgcol[srcidx]
-          @stylemap_bgcol[dstidx] = str.stylemap_bgcol[srcidx]
-          @stylemap_sgr[dstidx] = str.stylemap_sgr[srcidx]
+          @char_buf[dest_index] = str.char_buf[source_index]
+          @stylemap_fgcol[dest_index] = str.stylemap_fgcol[source_index]
+          @stylemap_bgcol[dest_index] = str.stylemap_bgcol[source_index]
+          @stylemap_sgr[dest_index] = str.stylemap_sgr[source_index]
         end
       end
     end
@@ -160,16 +161,16 @@ module Decent
       @str.size[1]
     end
 
-    def __offset(pos)
+    def offset(pos)
       [pos[0] + @pos[0], pos[1] + @pos[1]]
     end
 
     def [](pos)
-      @str[__offset pos]
+      @str[offset pos]
     end
 
     def []=(pos, val)
-      @str[__offset pos] = val
+      @str[offset pos] = val
     end
 
     def clear!
@@ -177,14 +178,17 @@ module Decent
     end
 
     def template(str, pos)
-      @str.template str, __offset(pos), @size
+      @str.template str, offset(pos), @size
     end
 
     def sub_templater(pos, size)
       # bounds check
-      size = [[size[0], @size[0] - pos[0]].min, [size[1], @size[1] - pos[1]].min]
+      size = [
+        [size[0], @size[0] - pos[0]].min,
+        [size[1], @size[1] - pos[1]].min
+      ]
 
-      StringTemplater.new @str, __offset(pos), size
+      StringTemplater.new @str, offset(pos), size
     end
   end
 
@@ -195,7 +199,6 @@ module Decent
       @dirty = true
       @calculated_size = [0, 0]
       @constraints = reactive({ width: @calculated_size[0], height: @calculated_size[1] })
-      # @templater = nil
       #@cache = ""
     end
 
@@ -299,14 +302,14 @@ module Decent
       end
     end
 
-    def render_children
+    def render_children(templater = @templater)
       return if children.length == 0
 
       used_space = 0
       children.each do |c|
-        oset = is_stack? ? [0, used_space] : [used_space, 0]
+        offset = is_stack? ? [0, used_space] : [used_space, 0]
 
-        c.templater = @templater.sub_templater(oset, c.calculated_size)
+        c.templater = templater.sub_templater(offset, c.calculated_size)
 
         used_space += c.calculated_size[is_stack? ? 1 : 0]
       end
@@ -326,15 +329,7 @@ module Decent
       node.dirty = true
     end
 
-    def templater=(tmpl)
-      # clear up old one to handle resizes
-      #if @dirty && @templater != nil
-      #  @templater.clear!
-      #end
-      @templater = tmpl
-    end
-
-    attr_accessor :calculated_size, :dirty, :constraints
+    attr_accessor :calculated_size, :dirty, :constraints, :templater
   end
 
   class TerminalRoot < TerminalNode
@@ -379,31 +374,24 @@ module Decent
 
       layout_children
 
-      wmax = @calculated_size[0] - 1
-      hmax = @calculated_size[1] - 1
+      right = @calculated_size[0] - 1
+      bottom = @calculated_size[1] - 1
 
       @templater[[0, 0]] = "┌"
-      @templater[[wmax, 0]] = "┐"
-      @templater[[0, hmax]] = "└"
-      @templater[[wmax, hmax]] = "┘"
+      @templater[[right, 0]] = "┐"
+      @templater[[0, bottom]] = "└"
+      @templater[[right, bottom]] = "┘"
 
       (@calculated_size[0] - 2).times do |i|
         @templater[[i + 1, 0]] = "─"
-        @templater[[i + 1, hmax]] = "─"
+        @templater[[i + 1, bottom]] = "─"
       end
       (@calculated_size[1] - 2).times do |i|
         @templater[[0, i + 1]] = "│"
-        @templater[[wmax, i + 1]] = "│"
+        @templater[[right, i + 1]] = "│"
       end
 
-      old_templater = @templater
-
-      @templater = @templater.sub_templater [1, 1], [@templater.width - 2, @templater.height - 2]
-      render_children
-
-      @templater = old_templater
-
-      #@cache = box
+      render_children @templater.sub_templater [1, 1], [@templater.width - 2, @templater.height - 2]
     end
   end
 
@@ -422,15 +410,18 @@ module Decent
   end
 
   class SpacerNode < TerminalNode
-    def render
+    def render(templater)
       return unless @dirty
+
       width = @constraints.width
       height = @constraints.height
+
       height.times do |y|
         width.times do |x|
-          @templater[[x, y]]
+          templater[[x, y]]
         end
       end
+
       @dirty = true
     end
   end
@@ -582,7 +573,8 @@ module Decent
     def initialize(stdout = STDOUT, stdin = $stdin)
       @stdout = stdout
       @stdin = stdin
-      # @buffer = nil
+      clear
+      @root_templater = StringTemplater.new @buffer, [0, 0], [size[1], size[0]]
     end
 
     def setup
@@ -591,8 +583,6 @@ module Decent
       @stdout.print "\033[?25l" # Disable cursor
 
       @stdin.echo = false
-
-      clear
     end
 
     def cleanup
@@ -617,8 +607,7 @@ module Decent
 =end
 
     def clear
-      sz = size
-      @buffer = StringBuf.new [sz[1], sz[0]]
+      @buffer = StringBuf.new [size[1], size[0]]
     end
 
     # Render takes the current screen buffer and renders it to the terminal.
@@ -665,8 +654,6 @@ module Decent
       @stdout.winsize # [rows, columns]
     end
 
-    def root_templater
-      StringTemplater.new @buffer, [0, 0], @buffer.size
-    end
+    attr_reader :root_templater
   end
 end
