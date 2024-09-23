@@ -24,11 +24,13 @@ module Decent
       split = str.split "\n"
       width = split.map { |s| s.each_grapheme_cluster.size }.max
       dest = StringBuf.new [width, split.length]
+
       split.each_with_index do |line, y|
         line.each_grapheme_cluster.each_with_index do |grapheme, x|
           dest[x, y] = grapheme
         end
       end
+
       dest
     end
 
@@ -90,6 +92,7 @@ module Decent
     def clear!(start = [0, 0], size = @size)
       xs = start[0]
       ys = start[1]
+
       size[1].times do |y|
         size[0].times do |x|
           idx = resolve(xs + x, ys + y)
@@ -99,11 +102,6 @@ module Decent
           @stylemap_sgr[idx] = []
         end
       end
-      # new = StringBuf.new @size
-      # @charbuf = new.charbuf
-      # @stylemap_fgcol = new.stylemap_fgcol
-      # @stylemap_bgcol = new.stylemap_bgcol
-      # @stylemap_sgr = new.stylemap_sgr
     end
 
     def resize!(new_size)
@@ -208,15 +206,12 @@ module Decent
       @dirty = true
       @calculated_size = [0, 0]
       @constraints = reactive({ width: @calculated_size[0], height: @calculated_size[1] })
-      #@cache = ""
     end
 
     def render
-      #return unless dirty
-      #@dirty = false
+      @dirty = false
 
       layout_children
-      #@cache =
       render_children
     end
 
@@ -237,8 +232,8 @@ module Decent
       absolute_widths, fraction_widths = children.partition { _1.width.is_a? Integer }
       absolute_heights, fraction_heights = children.partition { _1.height.is_a? Integer }
 
-      available_width = is_stack? ? constraints.width : (@constraints.width - absolute_widths.map { _1.width }.sum)
-      available_height = is_stack? ? (@constraints.height - absolute_heights.map { _1.height }.sum) : constraints.height
+      available_width = is_stack? ? @constraints.width : (@constraints.width - absolute_widths.map { _1.width }.sum)
+      available_height = is_stack? ? (@constraints.height - absolute_heights.map { _1.height }.sum) : @constraints.height
 
       widths = fraction_widths.map { _1.width }
       heights = fraction_heights.map { _1.height }
@@ -327,15 +322,7 @@ module Decent
     end
 
     def update
-      node = self
-
-      until node.is_root?
-        node.dirty = true
-
-        node = node.parent
-      end
-
-      node.dirty = true
+      @dirty = true
     end
 
     attr_accessor :calculated_size, :dirty, :constraints, :templater
@@ -372,8 +359,7 @@ module Decent
 
   class BoxNode < TerminalNode
     def render
-      #return unless @dirty
-      #@dirty = false
+      @dirty = false
 
       # Width
       @constraints.width = @calculated_size[0] - 2
@@ -421,7 +407,7 @@ module Decent
 
   class SpacerNode < TerminalNode
     def render
-      return unless @dirty
+      # return unless @dirty
 
       width = @constraints.width
       height = @constraints.height
@@ -603,54 +589,40 @@ module Decent
       @stdout.print "\033[?1049l" # Restore screen
     end
 
-    # Draw takes starting coordinates and draws text to the current screen buffer.
-    # Draw does *not* render the current buffer to the terminal.
-=begin
-    def draw(text = "", x = 0, y = 0)
-      # TODO: This sucks, we *need* diffing
-      text.each_line(chomp: true).each_with_index do |line, y_offset|
-        line.each_char.each_with_index do |char, x_offset|
-          @buffer[y + y_offset][x + x_offset] = char
-        end
-      end
-    end
-=end
-
     def clear
       @buffer = StringBuf.new [size[1], size[0]]
     end
 
     # Render takes the current screen buffer and renders it to the terminal.
     def render
-      # puts @buffer.charbuf
-
       # despite ruby being ruby, its probably faster to build this in memory anyway
-      render_buffer = "\033[0;0f\033[39;49m"
+      render_buffer = "\033[H\033[39;49m"
 
       prev_fg = 39
       prev_bg = 49
       @buffer.size[1].times do |y|
         @buffer.size[0].times do |x|
-          fg = @buffer.get_fg(x, y)
-          bg = @buffer.get_bg(x, y)
-          if fg != prev_fg
-            if bg != prev_bg
-              render_buffer += "\033[" + fg.to_s + ";" + bg.to_s + "m"
-            else
-              # only fg
-              render_buffer += "\033[" + fg.to_s + "m"
-            end
-          elsif bg != prev_bg
-            # only bg
-            render_buffer += "\033[" + bg.to_s + "m"
-          end
-          prev_fg = fg
-          prev_bg = bg
+         fg = @buffer.get_fg(x, y)
+         bg = @buffer.get_bg(x, y)
+         if fg != prev_fg
+           if bg != prev_bg
+             render_buffer += "\033[" + fg.to_s + ";" + bg.to_s + "m"
+           else
+             # only fg
+             render_buffer += "\033[" + fg.to_s + "m"
+           end
+         elsif bg != prev_bg
+           # only bg
+           render_buffer += "\033[" + bg.to_s + "m"
+         end
+         prev_fg = fg
+         prev_bg = bg
 
-          sgr = @buffer.get_sgr(x, y)
-          if sgr.length > 0
-            render_buffer += "\033[" + sgr.map { |n| n.to_s }.join(";") + "m"
-          end
+
+         sgr = @buffer.get_sgr(x, y)
+         if sgr.length > 0
+          render_buffer += "\033[" + sgr.map { |n| n.to_s }.join(";") + "m"
+         end
 
           render_buffer += @buffer[x, y]
         end
