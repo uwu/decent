@@ -2,101 +2,29 @@
 module DecentState
   extend self
 
-  @@effect_dependencies = []
-  @@current_computations = []
+  @@current_effect = nil
+  @@current_scope = nil
 
-  def effect_dependencies
-    @@effect_dependencies
+  def current_effect
+    @@current_effect
   end
 
-  def current_computations
-    @@current_computations
-  end
-  
-  # An Unloadable is an object with a cleanup method used for disposing of hanging computations.
-  class Unloadable
-    def initialize(scope, &cleanup)
-      @cleanup = cleanup
-      @scope = scope
-    end
-
-    def cleanup
-      @scope&.delete self
-      @cleanup&.call
-      @scope = nil
-      @cleanup = nil
-    end
+  def current_effect=(new_value)
+    @@current_effect = new_value
   end
 
-  def scope(&computation_scope)
-    previous_computations = @@current_computations
-    computations = []
-    @@current_computations = computations
-
-    computation_scope.call
-
-    @@current_computations = previous_computations
-
-    cleanup = Unloadable.new previous_computations do
-      computations.each { |c| c.cleanup }
-      computations = []
-    end
-
-    previous_computations.push(cleanup)
-
-    cleanup
+  def current_scope
+    @@current_scope
   end
 
-  def effect(dependencies = nil, &effect_callback)
-    cleanups = []
-
-    if dependencies.is_a? Array
-      dependencies.each do |dependency|
-        cleanups.push(dependency.watch_reassignment {
-          previous_dependencies = @@effect_dependencies
-          @@effect_dependencies = []
-          effect_callback.call
-          @@effect_dependencies = previous_dependencies
-        })
-      end
-    else
-      recalculate_dependencies = -> {
-        previous_dependencies = @@effect_dependencies
-        @@effect_dependencies = []
-
-        # For some reason, RubyMine cannot figure out that this *does* have access to the outer scope.
-        cleanups.each(&:cleanup)
-        cleanups = []
-        effect_callback.call
-
-        @@effect_dependencies.each do |dependency|
-          cleanups.push(dependency.watch_reassignment {
-            recalculate_dependencies.call
-          })
-        end
-
-        @@effect_dependencies = previous_dependencies
-      }
-
-      recalculate_dependencies.call
-    end
-
-    cleanup = Unloadable.new @@current_computations do
-      cleanups.each { |c| c.cleanup }
-      cleanups = []
-    end
-
-    @@current_computations&.push(cleanup)
-
-    cleanup
+  def current_scope=(new_value)
+    @@current_scope = new_value
   end
 
   class State
     def initialize(initial_state = nil)
-      @visit_watchers = []
-      @reassignment_watchers = []
-
       @state = initial_state
+      @reassignment_watchers = []
     end
 
     def untracked
@@ -108,79 +36,138 @@ module DecentState
     end
 
     def value
-      @visit_watchers.each { |watcher| watcher.call }
-
-      deps = DecentState.effect_dependencies
-      deps.push(self) unless deps.include? self
+      current_effect = DecentState.current_effect
+      add_observer(current_effect) if current_effect
 
       @state
     end
 
     def value=(new)
+      return if new == @state
+
       @state = new
 
-      @reassignment_watchers.each { |watcher| watcher.call(new) }
-    end
-
-    def watch_visit(&callback)
-      @visit_watchers.push callback
-
-      Unloadable.new [] do
-        @visit_watchers.delete callback
+      @reassignment_watchers.each do |effect|
+        effect.notify
       end
     end
 
-    def watch_reassignment(&callback)
-      @reassignment_watchers.push callback
-
-      Unloadable.new [] do
-        @reassignment_watchers.delete callback
-      end
+    def add_observer(effect)
+      effect.dependencies.push self unless effect.dependencies.include? self
+      @reassignment_watchers.push effect unless @reassignment_watchers.include? effect
     end
 
-    def watch(&callback)
-      unwatchers = [watch_visit(&callback), watch_reassignment(&callback)]
-
-      Unloadable.new [] do
-        unwatchers.each { |unwatch| unwatch.cleanup }
-        unwatchers = []
-      end
+    def remove_observer(effect)
+      effect.dependencies.delete self
+      @reassignment_watchers.delete effect
     end
   end
 
+  class Effect
+    def initialize(dependencies = nil, &notify)
+      @dependencies = []
+      @notify = notify
+
+      if dependencies.nil?
+        capture_dependencies &notify
+      else
+        dependencies.each do |dependency|
+          dependency.add_observer(self)
+        end
+      end
+
+      DecentState.current_scope&.computations&.push self
+    end
+
+    def capture_dependencies
+      previous_effect = DecentState.current_effect
+      DecentState.current_effect = self
+      yield
+      DecentState.current_effect = previous_effect
+    end
+
+    def notify
+      previous_effect = DecentState.current_effect
+      DecentState.current_effect = nil
+      @notify.call
+      DecentState.current_effect = previous_effect
+    end
+
+    def cleanup
+      until @dependencies.length == 0
+        @dependencies.first&.remove_observer self
+      end
+    end
+
+    attr_reader :dependencies
+  end
+
   class DerivedState < State
-    def initialize(&calculation)
+    def initialize(&computation)
       super nil
 
-      @cleanup = DecentState.effect do
-        self.value = calculation.call
+      @effect = DecentState::Effect.new do
+        self.value = computation.call
       end
     end
 
     def cleanup
-      @cleanup.cleanup
+      super
+      @effect.cleanup
     end
   end
 
-  # Creates a new reactive state object.
+  class Scope
+    def initialize(&scope)
+      @parent_scope = DecentState.current_scope
+      @child_scopes = []
+      @computations = []
+
+      @parent_scope&.child_scopes&.push self
+      capture &scope
+    end
+
+    def capture
+      previous_scope = DecentState.current_scope
+      DecentState.current_scope = self
+      yield
+      DecentState.current_scope = previous_scope
+    end
+
+    def cleanup
+      until @computations.length == 0
+        @computations.last&.cleanup
+        @computations.pop
+      end
+
+      until @child_scopes.length == 0
+        @child_scopes.last&.cleanup
+      end
+
+      @parent_scope&.child_scopes&.delete self
+    end
+
+    attr_reader :child_scopes, :computations
+  end
+
+  def scope(&scope)
+    Scope.new &scope
+  end
+
   def state(initial = nil)
     State.new initial
   end
 
-  def derived(&calculation)
-    DerivedState.new(&calculation)
+  def derived(&computation)
+    DerivedState.new(&computation)
   end
 
-  def is_state?(obj)
-    obj.is_a?(State) || obj.is_a?(DerivedState)
+  def effect(dependencies = nil, &notifier)
+    Effect.new dependencies, &notifier
   end
 
   def unwrap_state(obj)
-    if is_state? obj
-      obj.value
-    else
-      obj
-    end
+    obj.is_a?(State) ? obj.value : obj
   end
 
   def unwrap_hash(hash)

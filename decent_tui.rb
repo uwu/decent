@@ -11,7 +11,7 @@ module Decent
       @char_buf = Array.new(len, 32) # space char
       @stylemap_fgcol = Array.new(len, 39) # default fg col
       @stylemap_bgcol = Array.new(len, 49)
-      @stylemap_sgr   = Array.new(len) { Array.new }
+      @stylemap_sgr = Array.new(len) { Array.new }
     end
 
     # i stg do not edit the arrays returned by these or i will murder you -- sink
@@ -35,7 +35,8 @@ module Decent
     end
 
     # this was supposed to be private
-    def resolve(x, y) # [x, y]
+    def resolve(x, y)
+      # [x, y]
       if x >= size[0] || y >= size[1]
         throw Exception.new "Index out of range while indexing Decent::StringBuf"
       end
@@ -49,7 +50,7 @@ module Decent
         return c.chr Encoding::UTF_8
       end
       # c is an integer array (grapheme cluster)
-      c.map { |chr| chr.chr Encoding::UTF_8  }.join
+      c.map { |chr| chr.chr Encoding::UTF_8 }.join
     end
 
     def []=(x, y, val)
@@ -66,9 +67,11 @@ module Decent
     def get_fg(x, y)
       @stylemap_fgcol[resolve(x, y)]
     end
+
     def get_bg(x, y)
       @stylemap_bgcol[resolve(x, y)]
     end
+
     def get_sgr(x, y)
       @stylemap_sgr[resolve(x, y)]
     end
@@ -76,9 +79,11 @@ module Decent
     def set_fg(x, y, col)
       @stylemap_fgcol[resolve(x, y)] = col
     end
+
     def set_bg(x, y, col)
       @stylemap_bgcol[resolve(x, y)] = col
     end
+
     def set_sgr(x, y, sgr)
       @stylemap_sgr[resolve(x, y)] = sgr
     end
@@ -99,7 +104,7 @@ module Decent
           @char_buf[idx] = 32
           @stylemap_fgcol[idx] = 39
           @stylemap_bgcol[idx] = 49
-          @stylemap_sgr[idx] = []
+          @stylemap_sgr[idx].clear
         end
       end
     end
@@ -401,7 +406,7 @@ module Decent
     end
 
     def width
-      attributes[:content].lines(chomp: true).map { | l | l.each_grapheme_cluster.size }.max
+      attributes[:content].lines(chomp: true).map { |l| l.each_grapheme_cluster.size }.max
     end
   end
 
@@ -478,7 +483,7 @@ module Decent
         }
       end
 
-      Unloadable.new(-> { cleanups.each(&:call) })
+      -> { cleanups.each(&:call) }
     end
 
     def initialize(stdout, stdin, &ui)
@@ -602,27 +607,26 @@ module Decent
       prev_bg = 49
       @buffer.size[1].times do |y|
         @buffer.size[0].times do |x|
-         fg = @buffer.get_fg(x, y)
-         bg = @buffer.get_bg(x, y)
-         if fg != prev_fg
-           if bg != prev_bg
-             render_buffer += "\033[" + fg.to_s + ";" + bg.to_s + "m"
-           else
-             # only fg
-             render_buffer += "\033[" + fg.to_s + "m"
-           end
-         elsif bg != prev_bg
-           # only bg
-           render_buffer += "\033[" + bg.to_s + "m"
-         end
-         prev_fg = fg
-         prev_bg = bg
+          fg = @buffer.get_fg(x, y)
+          bg = @buffer.get_bg(x, y)
+          if fg != prev_fg
+            if bg != prev_bg
+              render_buffer += "\033[" + fg.to_s + ";" + bg.to_s + "m"
+            else
+              # only fg
+              render_buffer += "\033[" + fg.to_s + "m"
+            end
+          elsif bg != prev_bg
+            # only bg
+            render_buffer += "\033[" + bg.to_s + "m"
+          end
+          prev_fg = fg
+          prev_bg = bg
 
-
-         sgr = @buffer.get_sgr(x, y)
-         if sgr.length > 0
-          render_buffer += "\033[" + sgr.map { |n| n.to_s }.join(";") + "m"
-         end
+          sgr = @buffer.get_sgr(x, y)
+          if sgr.length > 0
+            render_buffer += "\033[" + sgr.map { |n| n.to_s }.join(";") + "m"
+          end
 
           render_buffer += @buffer[x, y]
         end

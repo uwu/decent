@@ -13,22 +13,13 @@ module Decent
     def initialize(attributes = {})
       @parent = self
       @children = []
-      @unloadables = [] # storing Unloadables for when removing the node from the tree
+      @reactivity_scope = scope {}
       @attributes = attributes
       @app = app
     end
 
-    def cleanup
-      @unloadables.each(&:cleanup)
-      @unloadables = [] # unnecessary but whatever
-
-      @children.each do |c|
-        c.cleanup
-      end
-    end
-
     def walk(&block)
-      @children.each(&:walk &block)
+      @children.each(&:walk & block)
     end
 
     def remove
@@ -40,17 +31,16 @@ module Decent
 
       @children.delete node
 
-      node.cleanup
+      node.reactivity_scope.cleanup
 
       until node.children.length == 0
-        node.remove_child node.children[0]
+        node.remove_child node.children.last
       end
     end
 
     def remove_children
-      until @children.length == 0
-        @children[0].remove
-      end
+      @children.each { _1.reactivity_scope.cleanup }
+      @children = []
     end
 
     def append_child(node)
@@ -59,7 +49,7 @@ module Decent
       node.parent = self
     end
 
-    attr_accessor :parent, :unloadables, :app
+    attr_accessor :parent, :app, :reactivity_scope
 
     def children
       @children.reduce([]) do |prev, child|
@@ -80,7 +70,7 @@ module Decent
     end
 
     def split_attributes
-      @attributes.each_pair.filter_map { |key, val| [key, val] if is_state? val }.to_h
+      @attributes.each_pair.filter_map { |key, val| [key, val] if val.is_a? State }.to_h
     end
 
     def draw # This exists exclusively for type hinting.
@@ -100,7 +90,7 @@ module Decent
 
   class FragmentNode < TreeNode
     def method_missing(name, *args)
-      @parent.send(name, *args)
+      @parent.send(name, *args) unless @parent == self
     end
   end
 
@@ -121,20 +111,12 @@ module Decent
 
     def show(on:, &ui)
       node = FragmentNode.new
-      cleanup_prev = nil
-
-      node.unloadables.push(Unloadable.new(node.unloadables) {
-        cleanup_prev&.cleanup
-      })
 
       build_ui = -> {
         node.remove_children
-        cleanup_prev&.cleanup
 
         if on.value
-          cleanup_prev = scope do
-            build_in_node(node, &ui)
-          end
+          build_in_node(node, &ui)
         end
 
         node.update
@@ -146,8 +128,12 @@ module Decent
         end
       }
 
-      node.unloadables.push(effect([on], &build_ui))
+      node.reactivity_scope.capture {
+        effect([on], &build_ui)
+      }
+
       @current_node.append_child node
+
       build_ui.call
     end
 
@@ -158,11 +144,9 @@ module Decent
         built_frag = FragmentNode.new
         built_frag.parent = parent_node
 
-        built_frag.unloadables.push(scope {
-          build_in_node(built_frag) do
-            builder.call(item)
-          end
-        })
+        build_in_node(built_frag) do
+          builder.call(item)
+        end
 
         built_frag
       }
@@ -170,16 +154,17 @@ module Decent
       nodes = []
 
       run_effect = -> {
+        # Cleanup nodes that have been removed from the array
         nodes.each do |(item, node)|
           next if of.untracked.find { _1.equal? item }
 
-          node.cleanup
-          node.children = []
+          node.reactivity_scope.cleanup
         end
-        nodes = of.untracked.map do |item|
-          found = nodes.find {|(i, _)| i.equal? item }
 
-          found ? found : [item, build_node.call(item)]
+        nodes = of.untracked.map do |item|
+          found = nodes.find { |(i, _)| i.equal? item }
+
+          found || [item, build_node.call(item)]
         end
 
         parent_node.children = nodes.map { _1[1] }
@@ -192,9 +177,9 @@ module Decent
         end
       }
 
-      parent_node.unloadables.push(
+      parent_node.reactivity_scope.capture do
         effect([of], &run_effect)
-      )
+      end
 
       @current_node.append_child parent_node
       run_effect.call
@@ -234,21 +219,19 @@ module Decent
       @current_node.append_child node
       @current_node = node
 
-      node.unloadables.push(
-        scope do
-          instance_eval(&ui)
+      node.reactivity_scope.capture do
+        instance_eval(&ui)
 
-          effect node.split_attributes.values do
-            node.update
+        effect node.split_attributes.values do
+          node.update
 
-            unless @prevent_drawing
-              prevent_drawing do
-                @root.draw
-              end
+          unless @prevent_drawing
+            prevent_drawing do
+              @root.draw
             end
           end
         end
-      )
+      end
 
       @current_node = node.parent
       node
@@ -257,7 +240,10 @@ module Decent
     def build_in_node(node, &builder)
       previous_node = @current_node
       @current_node = node
-      builder.call
+      node.reactivity_scope.capture do
+        # Ensure reactivity is coupled to the node
+        builder.call
+      end
       @current_node = previous_node
     end
   end
