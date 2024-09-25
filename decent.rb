@@ -15,7 +15,7 @@ module Decent
       @children = []
       @reactivity_scope = scope {}
       @attributes = attributes
-      @app = app
+      @app = nil
     end
 
     def walk(&block)
@@ -97,10 +97,11 @@ module Decent
   class DecentInternal
     include DecentState
 
-    def initialize(root = RootNode.new, node_type = TreeNode, &ui)
+    def initialize(root = RootNode.new, &ui)
       @root = root
       @current_node = @root
-      @prevent_drawing = false
+      @batching = false
+      @attributes_dirty = false
 
       instance_eval(&ui)
     end
@@ -121,10 +122,8 @@ module Decent
 
         node.update
 
-        unless @prevent_drawing
-          prevent_drawing do
-            @root.draw
-          end
+        batch do
+          @attributes_dirty = true
         end
       }
 
@@ -170,10 +169,8 @@ module Decent
         parent_node.children = nodes.map { _1[1] }
         parent_node.update
 
-        unless @prevent_drawing
-          prevent_drawing do
-            @root.draw
-          end
+        batch do
+          @attributes_dirty = true
         end
       }
 
@@ -208,27 +205,32 @@ module Decent
 
     alias_method :on, :after
 
-    def prevent_drawing
-      @prevent_drawing = true
-      yield
-      @prevent_drawing = false
+    def batch(&block)
+      was_batching = @batching
+      @batching = true
+      block&.call
+
+      unless was_batching
+        @root.draw if @attributes_dirty
+        @attributes_dirty = false
+        @batching = false
+      end
     end
 
     def create_node(type = TreeNode, attributes = {}, &ui)
       node = type.new(attributes)
+      node.app = self
       @current_node.append_child node
       @current_node = node
 
       node.reactivity_scope.capture do
-        instance_eval(&ui)
+        instance_eval(&ui) unless ui.nil?
 
         effect node.split_attributes.values do
           node.update
 
-          unless @prevent_drawing
-            prevent_drawing do
-              @root.draw
-            end
+          batch do
+            @attributes_dirty = true
           end
         end
       end

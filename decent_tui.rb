@@ -326,6 +326,12 @@ module Decent
       children.each(&:render)
     end
 
+    def with_bounds(&ui)
+      @app&.build_in_node(self) do
+        ui.call(@constraints)
+      end
+    end
+
     def update
       @dirty = true
     end
@@ -398,6 +404,8 @@ module Decent
 
   class LabelNode < TerminalNode
     def render
+      return if attributes[:content].length == 0
+
       @templater.template StringBuf.parse(attributes[:content]), [0, 0]
     end
 
@@ -406,7 +414,7 @@ module Decent
     end
 
     def width
-      attributes[:content].lines(chomp: true).map { |l| l.each_grapheme_cluster.size }.max
+      attributes[:content].lines(chomp: true).map { |l| l.each_grapheme_cluster.size }.max || 0
     end
   end
 
@@ -429,7 +437,7 @@ module Decent
 
   class DecentTUI < DecentInternal
     def fr(num)
-      num * 0.01
+      num * 0.1
     end
 
     def box(width: 1.0, height: 1.0, &ui)
@@ -523,7 +531,7 @@ module Decent
       @keyboard_handlers = { "*" => [] }
 
       root = TerminalRoot.new(@renderer)
-      super root, TerminalNode, &ui
+      super root, &ui
 
       begin
         root.draw
@@ -547,7 +555,10 @@ module Decent
 
               mapped = @keymap[char] || char
               ((@keyboard_handlers[mapped] || []) + @keyboard_handlers["*"]).each do |handler|
-                handler.call(mapped)
+
+                batch do
+                  handler.call(mapped)
+                end
               end
             end
 
