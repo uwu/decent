@@ -19,7 +19,10 @@ module Decent
     end
 
     def walk(&block)
-      @children.each(&:walk & block)
+      @children.each do |child|
+        block.call child
+        child.walk &block
+      end
     end
 
     def remove
