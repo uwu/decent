@@ -116,14 +116,14 @@ module Decent
     def show(on:, &ui)
       node = FragmentNode.new
 
-      build_ui = -> {
+      build_ui = ->(initial = false) {
         node.remove_children
 
         if on.value
           build_in_node(node, &ui)
         end
 
-        node.update
+        node.update unless initial
 
         batch do
           @attributes_dirty = true
@@ -136,7 +136,7 @@ module Decent
 
       @current_node.append_child node
 
-      build_ui.call
+      build_ui.call true
     end
 
     def each(of:, &builder)
@@ -229,6 +229,7 @@ module Decent
       node.reactivity_scope.capture do
         instance_eval(&ui) unless ui.nil?
 
+        # this creates a ton of effects but i think that's okay?
         effect node.split_attributes.values do
           node.update
 

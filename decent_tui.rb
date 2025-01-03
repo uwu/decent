@@ -1,7 +1,5 @@
 require_relative "decent"
 require "io/console"
-require "async"
-require "async/io/stream"
 
 module Decent
   class StringBuf
@@ -208,15 +206,15 @@ module Decent
     def initialize(*args)
       super(*args)
 
-      @dirty = true
       @calculated_size = [0, 0]
       @constraints = reactive({ width: @calculated_size[0], height: @calculated_size[1] })
     end
 
-    def render
-      @dirty = false
+    def layout
 
-      layout_children
+    end
+
+    def render
       render_children
     end
 
@@ -234,8 +232,11 @@ module Decent
 
     # This accounts for layouting.
     def layout_children
-      absolute_widths, fraction_widths = children.partition { _1.width.is_a? Integer }
-      absolute_heights, fraction_heights = children.partition { _1.height.is_a? Integer }
+      # this is to avoid multiple calls to children() since that can be expensive due to fragments expansion
+      child_nodes = children
+
+      absolute_widths, fraction_widths = child_nodes.partition { _1.width.is_a? Integer }
+      absolute_heights, fraction_heights = child_nodes.partition { _1.height.is_a? Integer }
 
       available_width = is_stack? ? @constraints.width : (@constraints.width - absolute_widths.map { _1.width }.sum)
       available_height = is_stack? ? (@constraints.height - absolute_heights.map { _1.height }.sum) : @constraints.height
@@ -245,6 +246,8 @@ module Decent
 
       resolved_width = is_stack? ? (widths.max || 0) : widths.sum
       resolved_height = is_stack? ? heights.sum : (heights.max || 0)
+
+      needs_rerender = false
 
       remaining_width = available_width
       fraction_widths.each_with_index do |node, idx|
@@ -260,7 +263,7 @@ module Decent
         end
 
         if node.calculated_size[0] != size
-          node.dirty = true
+          needs_rerender = true
 
           node.calculated_size[0] = size
           node.constraints.width = size
@@ -281,18 +284,18 @@ module Decent
         end
 
         if node.calculated_size[1] != size
-          node.dirty = true
+          needs_rerender = true
 
           node.calculated_size[1] = size
           node.constraints.height = size
         end
       end
 
-      absolute_widths.each_with_index do |node, idx|
+      absolute_widths.each_with_index do |node|
         width = node.width
 
         if node.calculated_size[0] != width
-          node.dirty = true
+          needs_rerender = true
 
           node.calculated_size[0] = width
           node.constraints.width = width
@@ -303,12 +306,23 @@ module Decent
         height = node.height
 
         if node.calculated_size[1] != height
-          node.dirty = true
+          needs_rerender = true
 
           node.calculated_size[1] = height
           node.constraints.height = height
         end
       end
+
+      if needs_rerender
+        # we could maybe cache which nodes have already been relayouted (by a parent node relayouting) and avoid layouting their descendants?
+        # this optimization really only matters in bulk update scenarios
+        child_nodes.each do |child|
+          child.layout
+          child.layout_children
+        end
+      end
+
+      needs_rerender
     end
 
     def render_children(templater = @templater)
@@ -326,17 +340,22 @@ module Decent
       children.each(&:render)
     end
 
+    def update
+      needs_rerender = @parent.layout_children
+
+      operating_node = needs_rerender ? @parent : self
+
+      operating_node.templater.clear!
+      operating_node.render
+    end
+
     def with_bounds(&ui)
       @app&.build_in_node(self) do
         ui.call(@constraints)
       end
     end
 
-    def update
-      @dirty = true
-    end
-
-    attr_accessor :calculated_size, :dirty, :constraints, :templater
+    attr_accessor :calculated_size, :constraints, :templater
   end
 
   class TerminalRoot < TerminalNode
@@ -351,7 +370,6 @@ module Decent
     end
 
     def draw
-      render
       @renderer.render
     end
 
@@ -369,17 +387,12 @@ module Decent
   end
 
   class BoxNode < TerminalNode
-    def render
-      @dirty = false
-
-      # Width
+    def layout
       @constraints.width = @calculated_size[0] - 2
-
-      # Height
       @constraints.height = @calculated_size[1] - 2
+    end
 
-      layout_children
-
+    def render
       right = @calculated_size[0] - 1
       bottom = @calculated_size[1] - 1
 
@@ -420,8 +433,6 @@ module Decent
 
   class SpacerNode < TerminalNode
     def render
-      # return unless @dirty
-
       width = @constraints.width
       height = @constraints.height
 
@@ -430,8 +441,6 @@ module Decent
           @templater[x, y] = " "
         end
       end
-
-      @dirty = true
     end
   end
 
@@ -534,42 +543,14 @@ module Decent
       super root, &ui
 
       begin
+        root.update
         root.draw
 
         # We can remove this after TruffleRuby gets support for Fiber schedulers.
         # This is why I wanted 0 deps. Sigh :(
-        readable_stdin = Async::IO::Stream.new(
-          Async::IO::Generic.new(stdin)
-        )
 
         until @stop_queue
-          Async do |task|
-            task.async do
-              stdin.raw!
-              char = readable_stdin.read(1)
-              stdin.cooked! # This method name is fucking dumb lmao.
-
-              if char == "\x03"
-                @stop_queue = true
-              end
-
-              mapped = @keymap[char] || char
-              ((@keyboard_handlers[mapped] || []) + @keyboard_handlers["*"]).each do |handler|
-
-                batch do
-                  handler.call(mapped)
-                end
-              end
-            end
-
-            task.async do
-              @queue.each do
-                task.async(&_1)
-              end
-
-              @queue = []
-            end
-          end
+          @queue.pop.call unless @queue.empty?
         end
       ensure
         @renderer.cleanup
@@ -644,7 +625,6 @@ module Decent
       end
 
       @stdout.print render_buffer
-      @buffer.clear!
     end
 
     def size

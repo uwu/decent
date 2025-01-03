@@ -22,26 +22,21 @@ Decent.tui do
   }
 
   dw = 0.5
-  key "Enter" do
-    count.value -= 1
-    w.value += dw
 
-    if w.value > 2
-      dw = -0.1
-    elsif w.value < 0.5
-      dw = 0.1
-    end
-  end
+  queue_task do
+    Thread.new do
+      loop do
+        count.value -= 1
+        w.value += dw
 
-  Thread.new do
-    loop do
-      count.value -= 1
-      w.value += dw
+        if w.value > 2
+          dw = -0.1
+        elsif w.value < 0.5
+          dw = 0.1
+        end
 
-      if w.value > 2
-        dw = -0.1
-      elsif w.value < 0.5
-        dw = 0.1
+        # mruby for some reason hates it if i don't add this sleep call. i'll figure out why later probably lol
+        sleep 0.0000000000000001
       end
     end
   end
