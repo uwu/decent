@@ -34,9 +34,6 @@ Decent.tui do
         elsif w.value < 0.5
           dw = 0.1
         end
-
-        # mruby for some reason hates it if i don't add this sleep call. i'll figure out why later probably lol
-        sleep 0.0000000000000001
       end
     end
   end

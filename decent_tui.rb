@@ -200,6 +200,62 @@ module Decent
 
       StringTemplater.new @str, offset(x, y), size
     end
+
+    # DO NOT FUCK WITH THIS. I SWEAR TO GOD.
+    attr_reader :str
+  end
+
+  class NodeStyles
+    def reset!
+      @background_color = nil
+      @foreground_color = nil
+      @bold_enabled = nil
+      @underline_enabled = nil
+      @blink_enabled = nil
+      @invert_enabled = nil
+    end
+
+    attr_reader :background_color, :foreground_color, :underline_enabled, :bold_enabled, :blink_enabled, :invert_enabled
+
+    def background(color)
+      @background_color = Decent.unwrap_state(color)
+
+      self
+    end
+
+    def foreground(color)
+      @foreground_color = Decent.unwrap_state(color)
+
+      self
+    end
+
+    def bold(enabled = true)
+      @bold_enabled = Decent.unwrap_state(enabled)
+
+      self
+    end
+
+    def underline(enabled = true)
+      @underline_enabled = Decent.unwrap_state(enabled)
+
+      self
+    end
+
+    def blink(enabled = true)
+      @blink_enabled = Decent.unwrap_state(enabled)
+
+      self
+    end
+
+    def invert(enabled = true)
+      @invert_enabled = Decent.unwrap_state(enabled)
+
+      self
+    end
+
+    alias_method :bg, :background
+    alias_method :fg, :foreground
+    alias_method :ul, :underline
   end
 
   class TerminalNode < TreeNode
@@ -208,6 +264,30 @@ module Decent
 
       @calculated_size = [0, 0]
       @constraints = reactive({ width: @calculated_size[0], height: @calculated_size[1] })
+      @styles = NodeStyles.new
+    end
+
+    def style(&styles)
+      if styles
+        first_run = true
+
+        @reactivity_scope.capture do
+          effect do
+            @styles.reset!
+            @styles.instance_eval &styles
+
+            if first_run
+              first_run = false
+            else
+              render_styles
+
+              @app.root.draw
+            end
+          end
+        end
+      end
+
+      @styles
     end
 
     def layout
@@ -216,6 +296,52 @@ module Decent
 
     def render
       render_children
+    end
+
+    def render_styles
+      screen_templater = @templater.str
+
+      bg_color = @styles.background_color
+      fg_color = @styles.foreground_color
+      has_bold = @styles.bold_enabled
+      has_underline = @styles.underline_enabled == true
+      has_blink = @styles.blink_enabled == true
+      has_invert = @styles.invert_enabled == true
+
+
+      node_start = @templater.pos[0]
+      node_end = (@templater.pos[0] + @calculated_size[0]) - 1
+
+      node_top = @templater.pos[1]
+      node_bottom = (@templater.pos[1] + @calculated_size[1]) - 1
+
+      (node_top..node_bottom).each do |y|
+        (node_start..node_end).each do |x|
+          if bg_color
+            screen_templater.set_bg(x, y, bg_color)
+          end
+
+          if fg_color
+            screen_templater.set_fg(x, y, fg_color)
+          end
+
+          sgr = []
+
+          sgr.push(1) if has_bold
+          sgr.push(4) if has_underline
+          sgr.push(5) if has_blink
+          sgr.push(7) if has_invert
+
+          unless sgr.empty?
+            screen_templater.set_sgr(x, y, sgr)
+          end
+        end
+      end
+    end
+
+    def render_with_styles
+      render_styles
+      render
     end
 
     def width
@@ -329,6 +455,7 @@ module Decent
       return if children.length == 0
 
       used_space = 0
+
       children.each do |c|
         offset = is_stack? ? [0, used_space] : [used_space, 0]
 
@@ -337,7 +464,10 @@ module Decent
         used_space += c.calculated_size[is_stack? ? 1 : 0]
       end
 
-      children.each(&:render)
+
+      children.each do |c|
+        c.render_with_styles
+      end
     end
 
     def update
@@ -346,16 +476,18 @@ module Decent
       operating_node = needs_rerender ? @parent : self
 
       operating_node.templater.clear!
-      operating_node.render
+      operating_node.render_with_styles
     end
 
     def with_bounds(&ui)
+      # TODO: currently broken due to triggering rerender prior to initial render.
+      # rewrite imminent? possibly! i want to kill myself.
       @app&.build_in_node(self) do
         ui.call(@constraints)
       end
     end
 
-    attr_accessor :calculated_size, :constraints, :templater
+    attr_accessor :calculated_size, :constraints, :templater, :styles
   end
 
   class TerminalRoot < TerminalNode
@@ -444,6 +576,19 @@ module Decent
     end
   end
 
+  class SpacerNode < TerminalNode
+    def render
+      width = @constraints.width
+      height = @constraints.height
+
+      height.times do |y|
+        width.times do |x|
+          @templater[x, y] = " "
+        end
+      end
+    end
+  end
+
   class DecentTUI < DecentInternal
     def fr(num)
       num * 0.1
@@ -483,61 +628,11 @@ module Decent
       @queue.push(cb)
     end
 
-    # Create a keyboard handler (rework later)
-    def key(names = [], &callback)
-      if names.is_a? String
-        names = [names]
-      end
-
-      cleanups = names.map do |name|
-        @keyboard_handlers[name] = [] unless @keyboard_handlers[name]
-
-        handlers = @keyboard_handlers[name]
-        handlers.push(callback)
-
-        -> {
-          handlers.delete_at(handlers.index(callback))
-        }
-      end
-
-      -> { cleanups.each(&:call) }
-    end
-
     def initialize(stdout, stdin, &ui)
       @renderer = TerminalRenderer.new(stdout, stdin)
       @renderer.setup
       @stop_queue = false
       @queue = []
-
-      # This keymap is actually extremely primitive.
-      @keymap = { "\r" => "Enter",
-                  "\b" => "Backspace",
-                  "\x7F" => "Backspace",
-                  "^Q" => "\u0011",
-                  "^W" => "\u0017",
-                  "^E" => "\u0005",
-                  "^R" => "\u0012",
-                  "^T" => "\u0014",
-                  "^Y" => "\u0019",
-                  "^U" => "\u0015",
-                  "^I" => "\t",
-                  "^O" => "\u000F",
-                  "^P" => "\u0010",
-                  "^A" => "\u0001",
-                  "^S" => "\u0013",
-                  "^D" => "\u0004",
-                  "^F" => "\u0006",
-                  "^G" => "\a",
-                  "^H" => "\b",
-                  "^J" => "k",
-                  "^\v" => "l",
-                  "^\f" => "x",
-                  "^\u0018" => "v",
-                  "^B" => "\u0002",
-                  "^N" => "\u000E",
-                  "^[" => "\e",
-                  "^]" => "\u001D" }
-      @keyboard_handlers = { "*" => [] }
 
       root = TerminalRoot.new(@renderer)
       super root, &ui
@@ -556,6 +651,8 @@ module Decent
         @renderer.cleanup
       end
     end
+
+    attr_accessor :renderer
   end
 
   def self.tui(stdout = STDOUT, stdin = $stdin, &ui)
@@ -597,6 +694,7 @@ module Decent
 
       prev_fg = 39
       prev_bg = 49
+      prev_sgr_len = 0
       @buffer.size[1].times do |y|
         @buffer.size[0].times do |x|
           fg = @buffer.get_fg(x, y)
@@ -616,9 +714,15 @@ module Decent
           prev_bg = bg
 
           sgr = @buffer.get_sgr(x, y)
+          if prev_sgr_len > 0 && sgr.length == 0
+            sgr = [0]
+          end
+
           if sgr.length > 0
             render_buffer += "\033[" + sgr.map { |n| n.to_s }.join(";") + "m"
           end
+
+          prev_sgr_len = sgr.length
 
           render_buffer += @buffer[x, y]
         end

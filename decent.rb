@@ -52,7 +52,7 @@ module Decent
       node.parent = self
     end
 
-    attr_accessor :parent, :app, :reactivity_scope
+    attr_accessor :parent, :app, :reactivity_scope, :root
 
     def children
       @children.reduce([]) do |prev, child|
@@ -108,6 +108,8 @@ module Decent
 
       instance_eval(&ui)
     end
+
+    attr_accessor :root
 
     def frag(&ui)
       create_node(FragmentNode, {}, &ui)
