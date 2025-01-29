@@ -17,3 +17,13 @@ Decent::App.new do
   end
 end
 ```
+
+# TODOs
+- ANSI  Style mapping (e.g background(:red))
+- Keyboard input
+- Terminal resize support
+- Layers (w/ transparency!)
+- Canvas
+- SSH
+- Scrollable containers
+- Diffing
