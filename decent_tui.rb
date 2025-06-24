@@ -258,6 +258,111 @@ module Decent
     alias_method :ul, :underline
   end
 
+  class GridBuilder
+    def initialize(template: -> {}, &children)
+      # a b c
+      # d e f
+      # ->
+      # [[:a, :b, :c], [:d, :e, :f]]
+      @grid = []
+
+      # { area_name => [[start_row, start_x], [end_row, end_x]] }
+      # this is the final data structure that will be used by the layouter
+      @areas = {}
+
+      instance_exec &template
+
+      # merge [ a a c ] to [ (a, 2) (c, 1) ] etc
+      # (can you tell that the merging is sink-code? hehe.) - ys
+      horizontally_merged = []
+      @grid.each do |row|
+        segments = []
+        last = nil
+        count = 1
+        row.each do |item|
+          count += 1 if item == last
+
+          if item != last && last != nil
+            segments.push [last, count]
+            count = 1
+          end
+
+          last = item
+        end
+
+        segments.push [last, count]
+        horizontally_merged.push segments
+      end
+
+      # vertically merge
+      # outline of the algorithm: assign an index column to each row
+      # walk the furthest back rows forward one cell
+      # if N adjacent rows all have the same index, and their next cell has the same size and same name, merge areas
+      # else just add the area and advance the index for those rows
+      # if we try to add a name that already exists without merging it on, error as that means non-rect or repeated names
+
+      # cell indexes per row
+      indexes = horizontally_merged.map { |_| 0 }
+      # x-coordinate per row
+      x_coords = horizontally_merged.map { |_| 0 }
+
+      # this is the x-coord of the right hand side of the screen, so for a b c, it is 3
+      final_xc = @grid[0].length
+
+      # this code isn't the best but i think its pretty decent :) - ys
+      loop do
+        # build list of rows we want to walk
+        min_xc = x_coords.min
+        rows_to_advance = x_coords.filter_map.with_index { |i, r| r if min_xc == i } # i <3 ruby - ys
+
+        # check if we're done - this is if all rows are at the last index.
+        break if rows_to_advance.length == x_coords.length && x_coords.all? { |x| x == final_xc }
+
+        # the previous row's cell they just added, [start_x, [name, size]]
+        last_row_next_cell = nil
+
+        # advance rows by one cell and do all the like, work, lol
+        rows_to_advance.each.with_index do |row_i, rows_to_a_i|
+          next_cell = horizontally_merged[row_i][indexes[row_i]]
+
+          # check if last row isn't directly above us, and hence we don't need to attempt vertical merging
+          disconnected = rows_to_a_i == 0 || (row_i - rows_to_advance[rows_to_a_i - 1]) > 1
+
+          # figure out if we can connect or not
+          can_connect = last_row_next_cell != nil && last_row_next_cell[0] == x_coords[row_i] && last_row_next_cell[1] == next_cell
+
+          if disconnected || !can_connect
+            # simply add the next cell
+            raise "Ragged or repeated area in a grid" if @areas.has_key? next_cell[0]
+
+            last_row_next_cell = [indexes[row_i], next_cell]
+
+            start_x = x_coords[row_i]
+
+            indexes[row_i] += 1
+            x_coords[row_i] += next_cell[1]
+
+            @areas[next_cell[0]] = [[row_i, start_x], [row_i, x_coords[row_i]]]
+          else
+            # we know we line up, extend the cell down one row
+            @areas[next_cell[0]][1][0] += 1 # this line of code is beautiful. /s - ys
+            indexes[row_i] += 1
+            x_coords[row_i] += next_cell[1]
+          end
+        end
+      end
+
+      # see if this is what i expect? hopefully?
+      puts @areas.inspect
+    end
+
+    def method_missing(name, *args)
+      @grid.push([]) if args.size == 0
+
+      @grid.last.unshift name
+    end
+  end
+
   class TerminalNode < TreeNode
     def initialize(*args)
       super(*args)
