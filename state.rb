@@ -1,24 +1,26 @@
+require "objspace"
+
 # noinspection RubyClassVariableUsageInspection We want the undefined behavior, I promise.
 module DecentState
   extend self
 
-  @@current_effect = nil
-  @@current_scope = nil
+  @@fiber_current_effects = ObjectSpace::WeakMap.new
+  @@fiber_current_scopes = ObjectSpace::WeakMap.new
 
   def current_effect
-    @@current_effect
+    @@fiber_current_effects[Fiber.current]
   end
 
   def current_effect=(new_value)
-    @@current_effect = new_value
+    @@fiber_current_effects[Fiber.current] = new_value
   end
 
   def current_scope
-    @@current_scope
+    @@fiber_current_scopes[Fiber.current]
   end
 
   def current_scope=(new_value)
-    @@current_scope = new_value
+    @@fiber_current_scopes[Fiber.current] = new_value
   end
 
   class State
