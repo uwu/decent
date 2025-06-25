@@ -35,7 +35,7 @@ module Decent
     # this was supposed to be private
     def resolve(x, y)
       # [x, y]
-      if x >= size[0] || y >= size[1]
+      if x >= @size[0] || y >= @size[1]
         throw Exception.new "Index out of range while indexing Decent::StringBuf"
       end
 
@@ -110,6 +110,7 @@ module Decent
     def resize!(new_size)
       # let the GC collect the old arrays and the new class WHEEEE
       new = resize new_size
+      @size = new_size
       @char_buf = new.char_buf
       @stylemap_fgcol = new.stylemap_fgcol
       @stylemap_bgcol = new.stylemap_bgcol
@@ -603,7 +604,7 @@ module Decent
       @constraints = reactive({ width: @calculated_size[0], height: @calculated_size[1] })
 
       @renderer = renderer
-      @templater = renderer.root_templater
+      @templater = StringTemplater.new @renderer.buffer, [0, 0], [@renderer.size[1], @renderer.size[0]]
     end
 
     def draw
@@ -746,6 +747,20 @@ module Decent
         root.update
         root.draw
 
+        # Windows doesn't have SIGWINCH, we may need to poll for resize unfortunately.
+        unless Gem.win_platform?
+          # This encounters issues on Truffle. Not entirely certain why.
+          Signal.trap("SIGWINCH") do # This is to account for forcibly rerendering on window resize!
+            root.calculated_size = @renderer.size.reverse
+            root.constraints.width = root.calculated_size[0]
+            root.constraints.height = root.calculated_size[1]
+            @renderer.buffer.resize!(root.calculated_size)
+            root.templater = StringTemplater.new @renderer.buffer, [0, 0], root.calculated_size
+            root.update
+            root.draw
+          end
+        end
+
         # We can remove this after TruffleRuby gets support for Fiber schedulers.
         # This is why I wanted 0 deps. Sigh :(
 
@@ -769,7 +784,6 @@ module Decent
       @stdout = stdout
       @stdin = stdin
       clear
-      @root_templater = StringTemplater.new @buffer, [0, 0], [size[1], size[0]]
     end
 
     def setup
@@ -840,6 +854,6 @@ module Decent
       @stdout.winsize # [rows, columns]
     end
 
-    attr_reader :root_templater
+    attr_reader :buffer
   end
 end
