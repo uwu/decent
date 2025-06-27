@@ -644,7 +644,7 @@ module Decent
         @templater[i + 1, bottom] = "─"
       end
 
-      col_width = (right / col_count).floor()
+      col_width = (right / col_count).floor
       (col_count-1).times do |col|
         x = (col + 1) * col_width
         @templater[x, 0] = "┬"
@@ -660,7 +660,7 @@ module Decent
         @templater[right, i + 1] = "│"
       end
 
-      row_height = (bottom / row_count).floor()
+      row_height = (bottom / row_count).floor
       (row_count - 1).times do |row|
         y = (row + 1) * row_height
         
@@ -681,17 +681,17 @@ module Decent
         return unless y * 2 + 1 < @calculated_size[1] - 1
         row[..col_count - 1].each_with_index do |cell, x|
           # skip empty cells
-          next unless not cell.nil?
-          if cell.is_a? Integer then cell = cell.to_s end
+          next if cell.nil?
+          cell = cell.to_s if cell.is_a? Integer
 
           # Account for final column width being the remainder of the table size
-          content_width = (x == col_count ? (right / col_count).ceil() : col_width) - 2
+          content_width = (x == col_count ? (right / col_count).ceil : col_width) - 2
 
           # If it's too small, skip it,
           # if it's just wide enough to do the ellipsis, do that,
           # if it's wide enough to draw some but not all of it, do that
           # otherwise, draw all of it
-          content = content_width < 0 ? next : content_width < 1 ? "…" : cell.length() > content_width ? cell[0..content_width - 1] + "…" : cell[0..content_width]
+          content = content_width < 0 ? next : content_width < 1 ? "…" : cell.length > content_width ? cell[0..content_width - 1] + "…" : cell[0..content_width]
 
           # Potentially unnecessary min guards
           @templater.template StringBuf.parse(content), [(x * col_width) + 1, y * 2 + 1]
@@ -700,11 +700,11 @@ module Decent
     end
 
     def col_count
-      attributes[:head].length()
+      attributes[:head].length
     end
 
     def row_count
-      attributes[:body].length() + 1
+      attributes[:body].length + 1
     end
   end
 
@@ -805,7 +805,7 @@ module Decent
     end
 
     def table(head, body)
-      create_node(TableNode, {head: head, body: body, height: (body.length() + 1) * 2 + 1})
+      create_node(TableNode, {head: head, body: body, height: (body.length + 1) * 2 + 1})
     end
 
     def center(&ui)
