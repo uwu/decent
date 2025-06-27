@@ -624,6 +624,90 @@ module Decent
 
   end
 
+  class TableNode < TerminalNode
+    def layout
+      @constraints.width = @calculated_size[0] - 2
+      @constraints.height = @calculated_size[1] - 2
+    end
+
+    def render
+      right = @calculated_size[0] - 1
+      bottom = @calculated_size[1] - 1
+
+      @templater[0, 0] = "┌"
+      @templater[right, 0] = "┐"
+      @templater[0, bottom] = "└"
+      @templater[right, bottom] = "┘"
+
+      (@calculated_size[0] - 2).times do |i|
+        @templater[i + 1, 0] = "─"
+        @templater[i + 1, bottom] = "─"
+      end
+
+      col_width = (right / col_count).floor()
+      (col_count-1).times do |col|
+        x = (col + 1) * col_width
+        @templater[x, 0] = "┬"
+        @templater[x, bottom] = "┴"
+        
+        (@calculated_size[1] - 2).times do |i|
+          @templater[x, i + 1] = "│"
+        end
+      end
+
+      (@calculated_size[1] - 2).times do |i|
+        @templater[0, i + 1] = "│"
+        @templater[right, i + 1] = "│"
+      end
+
+      row_height = (bottom / row_count).floor()
+      (row_count - 1).times do |row|
+        y = (row + 1) * row_height
+        
+        (@calculated_size[0] - 1).times do |i|
+          if ((i + 1) % col_width == 0 && i < (col_count - 1) * col_width) then
+            @templater[i + 1, y] = "┼"
+          else
+            @templater[i + 1, y] = "─"
+          end
+        end
+
+        @templater[0, y] = "├"
+        @templater[right, y] = "┤"
+      end
+
+      # put head in front of body and flatten once to consolidate rendering logic
+      [[attributes[:head]], attributes[:body]].flatten(1).each_with_index do |row, y| 
+        return unless y * 2 + 1 < @calculated_size[1] - 1
+        row[..col_count - 1].each_with_index do |cell, x|
+          # skip empty cells
+          next unless not cell.nil?
+          if cell.is_a? Integer then cell = cell.to_s end
+
+          # Account for final column width being the remainder of the table size
+          content_width = (x == col_count ? (right / col_count).ceil() : col_width) - 2
+
+          # If it's too small, skip it,
+          # if it's just wide enough to do the ellipsis, do that,
+          # if it's wide enough to draw some but not all of it, do that
+          # otherwise, draw all of it
+          content = content_width < 0 ? next : content_width < 1 ? "…" : cell.length() > content_width ? cell[0..content_width - 1] + "…" : cell[0..content_width]
+
+          # Potentially unnecessary min guards
+          @templater.template StringBuf.parse(content), [(x * col_width) + 1, y * 2 + 1]
+        end
+      end
+    end
+
+    def col_count
+      attributes[:head].length()
+    end
+
+    def row_count
+      attributes[:body].length() + 1
+    end
+  end
+
   class BoxNode < TerminalNode
     def layout
       @constraints.width = @calculated_size[0] - 2
@@ -718,6 +802,10 @@ module Decent
 
     def spacer
       create_node(SpacerNode, {}) {}
+    end
+
+    def table(head, body)
+      create_node(TableNode, {head: head, body: body, height: (body.length() + 1) * 2 + 1})
     end
 
     def center(&ui)
